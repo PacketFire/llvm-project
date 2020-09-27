@@ -81,7 +81,7 @@ def OpenACC_ParallelOp : OpenACC_Op<"parallel",
   let summary = "parallel construct";
   let description = [{
     The "acc.parallel" operation represents a parallel construct block. It has
-    one region to be executued in parallel on the current device.
+    one region to be executed in parallel on the current device.
 
     Example:
 
@@ -94,12 +94,15 @@ def OpenACC_ParallelOp : OpenACC_Op<"parallel",
   }];
 
   let arguments = (ins Optional<IntOrIndex>:$async,
+                       UnitAttr:$asyncAttr,
                        Variadic<IntOrIndex>:$waitOperands,
+                       UnitAttr:$waitAttr,
                        Optional<IntOrIndex>:$numGangs,
                        Optional<IntOrIndex>:$numWorkers,
                        Optional<IntOrIndex>:$vectorLength,
                        Optional<I1>:$ifCond,
                        Optional<I1>:$selfCond,
+                       UnitAttr:$selfAttr,
                        OptionalAttr<OpenACC_ReductionOpAttr>:$reductionOp,
                        Variadic<AnyType>:$reductionOperands,
                        Variadic<AnyType>:$copyOperands,
@@ -121,12 +124,15 @@ def OpenACC_ParallelOp : OpenACC_Op<"parallel",
 
   let extraClassDeclaration = [{
     static StringRef getAsyncKeyword() { return "async"; }
+    static StringRef getAsyncAttrName() { return "asyncAttr"; }
     static StringRef getWaitKeyword() { return "wait"; }
+    static StringRef getWaitAttrName() { return "waitAttr"; }
     static StringRef getNumGangsKeyword() { return "num_gangs"; }
     static StringRef getNumWorkersKeyword() { return "num_workers"; }
     static StringRef getVectorLengthKeyword() { return "vector_length"; }
     static StringRef getIfKeyword() { return "if"; }
     static StringRef getSelfKeyword() { return "self"; }
+    static StringRef getSelfAttrName() { return "selfAttr"; }
     static StringRef getReductionKeyword() { return "reduction"; }
     static StringRef getCopyKeyword() { return "copy"; }
     static StringRef getCopyinKeyword() { return "copyin"; }
@@ -310,4 +316,3 @@ def OpenACC_YieldOp : OpenACC_Op<"yield", [Terminator,
 }
 
 #endif // OPENACC_OPS
-

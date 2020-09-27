@@ -629,6 +629,17 @@ def OpNonNorm : TEST_Op<"op_nonnorm"> {
   let arguments = (ins AnyMemRef:$X, AnyMemRef:$Y);
 }
 
+// Test for memrefs normalization of an op with a reference to a function
+// symbol.
+def OpFuncRef : TEST_Op<"op_funcref"> {
+  let summary = "Test op with a reference to a function symbol";
+  let description = [{
+    The "test.op_funcref" is a test op with a reference to a function symbol.
+  }];
+  let builders = [OpBuilder<[{OpBuilder &builder, OperationState &state,
+                             FuncOp function}]>];
+}
+
 // Pattern add the argument plus a increasing static number hidden in
 // OpMTest function. That value is set into the optional argument.
 // That way, we will know if operations is called once or twice.
@@ -1062,14 +1073,14 @@ def MixedVResultOp3 : TEST_Op<"mixed_variadic_out3",
   // result type. So need to provide a builder not requiring result types.
   let builders = [
     OpBuilder<
-      "OpBuilder &builder, OperationState &state, IntegerAttr count",
+      "IntegerAttr count",
       [{
-        auto i32Type = builder.getIntegerType(32);
-        state.addTypes(i32Type); // $output1
+        auto i32Type = $_builder.getIntegerType(32);
+        $_state.addTypes(i32Type); // $output1
         SmallVector<Type, 4> types(count.getInt(), i32Type);
-        state.addTypes(types); // $output2
-        state.addTypes(types); // $output3
-        state.addAttribute("count", count);
+        $_state.addTypes(types); // $output2
+        $_state.addTypes(types); // $output3
+        $_state.addAttribute("count", count);
       }]>
   ];
 }
@@ -1542,6 +1553,17 @@ def FormatCustomDirectiveSuccessors
   let assemblyFormat = [{
     custom<CustomDirectiveSuccessors>(
       $successor, $successors
+    )
+    attr-dict
+  }];
+}
+
+def FormatCustomDirectiveAttributes
+    : TEST_Op<"format_custom_directive_attributes"> {
+  let arguments = (ins I64Attr:$attr, OptionalAttr<I64Attr>:$optAttr);
+  let assemblyFormat = [{
+    custom<CustomDirectiveAttributes>(
+      $attr, $optAttr
     )
     attr-dict
   }];

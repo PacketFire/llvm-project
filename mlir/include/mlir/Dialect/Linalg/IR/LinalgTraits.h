@@ -62,7 +62,7 @@ class StructuredOpTraits
 public:
   static LogicalResult verifyTrait(Operation *op) {
     ConcreteType concreteOp = cast<ConcreteType>(op);
-    auto nOperands = cast<ConcreteType>(op).getNumInputsAndOutputBuffers();
+    auto nOperands = concreteOp.getNumInputsAndOutputBuffers();
     if (failed(OpTrait::impl::verifyAtLeastNOperands(op, nOperands)))
       return failure();
     if (op->getNumResults() > concreteOp.getNumOutputs())
@@ -90,7 +90,7 @@ public:
   unsigned getNumOutputs() {
     ConcreteType concreteOp = cast<ConcreteType>(this->getOperation());
     return concreteOp.output_buffers().size() +
-           concreteOp.output_tensors().size();
+           concreteOp.result_tensors().size();
   }
   static LogicalResult verifyTrait(Operation *op) {
     ConcreteType concreteOp = cast<ConcreteType>(op);

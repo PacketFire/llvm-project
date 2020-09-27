@@ -433,12 +433,43 @@ func @vector_print_scalar_i1(%arg0: i1) {
   vector.print %arg0 : i1
   return
 }
+//
+// Type "boolean" always uses zero extension.
+//
 // CHECK-LABEL: llvm.func @vector_print_scalar_i1(
 // CHECK-SAME: %[[A:.*]]: !llvm.i1)
-//       CHECK: %[[T:.*]] = llvm.mlir.constant(1 : i32) : !llvm.i32
-//       CHECK: %[[F:.*]] = llvm.mlir.constant(0 : i32) : !llvm.i32
-//       CHECK: %[[S:.*]] = llvm.select %[[A]], %[[T]], %[[F]] : !llvm.i1, !llvm.i32
+//       CHECK: %[[S:.*]] = llvm.zext %[[A]] : !llvm.i1 to !llvm.i32
 //       CHECK: llvm.call @print_i32(%[[S]]) : (!llvm.i32) -> ()
+//       CHECK: llvm.call @print_newline() : () -> ()
+
+func @vector_print_scalar_i4(%arg0: i4) {
+  vector.print %arg0 : i4
+  return
+}
+// CHECK-LABEL: llvm.func @vector_print_scalar_i4(
+// CHECK-SAME: %[[A:.*]]: !llvm.i4)
+//       CHECK: %[[S:.*]] = llvm.sext %[[A]] : !llvm.i4 to !llvm.i32
+//       CHECK: llvm.call @print_i32(%[[S]]) : (!llvm.i32) -> ()
+//       CHECK: llvm.call @print_newline() : () -> ()
+
+func @vector_print_scalar_si4(%arg0: si4) {
+  vector.print %arg0 : si4
+  return
+}
+// CHECK-LABEL: llvm.func @vector_print_scalar_si4(
+// CHECK-SAME: %[[A:.*]]: !llvm.i4)
+//       CHECK: %[[S:.*]] = llvm.sext %[[A]] : !llvm.i4 to !llvm.i32
+//       CHECK: llvm.call @print_i32(%[[S]]) : (!llvm.i32) -> ()
+//       CHECK: llvm.call @print_newline() : () -> ()
+
+func @vector_print_scalar_ui4(%arg0: ui4) {
+  vector.print %arg0 : ui4
+  return
+}
+// CHECK-LABEL: llvm.func @vector_print_scalar_ui4(
+// CHECK-SAME: %[[A:.*]]: !llvm.i4)
+//       CHECK: %[[S:.*]] = llvm.zext %[[A]] : !llvm.i4 to !llvm.i32
+//       CHECK: llvm.call @printU32(%[[S]]) : (!llvm.i32) -> ()
 //       CHECK: llvm.call @print_newline() : () -> ()
 
 func @vector_print_scalar_i32(%arg0: i32) {
@@ -450,6 +481,45 @@ func @vector_print_scalar_i32(%arg0: i32) {
 //       CHECK:    llvm.call @print_i32(%[[A]]) : (!llvm.i32) -> ()
 //       CHECK:    llvm.call @print_newline() : () -> ()
 
+func @vector_print_scalar_ui32(%arg0: ui32) {
+  vector.print %arg0 : ui32
+  return
+}
+// CHECK-LABEL: llvm.func @vector_print_scalar_ui32(
+// CHECK-SAME: %[[A:.*]]: !llvm.i32)
+//       CHECK:    llvm.call @printU32(%[[A]]) : (!llvm.i32) -> ()
+//       CHECK:    llvm.call @print_newline() : () -> ()
+
+func @vector_print_scalar_i40(%arg0: i40) {
+  vector.print %arg0 : i40
+  return
+}
+// CHECK-LABEL: llvm.func @vector_print_scalar_i40(
+// CHECK-SAME: %[[A:.*]]: !llvm.i40)
+//       CHECK: %[[S:.*]] = llvm.sext %[[A]] : !llvm.i40 to !llvm.i64
+//       CHECK: llvm.call @print_i64(%[[S]]) : (!llvm.i64) -> ()
+//       CHECK: llvm.call @print_newline() : () -> ()
+
+func @vector_print_scalar_si40(%arg0: si40) {
+  vector.print %arg0 : si40
+  return
+}
+// CHECK-LABEL: llvm.func @vector_print_scalar_si40(
+// CHECK-SAME: %[[A:.*]]: !llvm.i40)
+//       CHECK: %[[S:.*]] = llvm.sext %[[A]] : !llvm.i40 to !llvm.i64
+//       CHECK: llvm.call @print_i64(%[[S]]) : (!llvm.i64) -> ()
+//       CHECK: llvm.call @print_newline() : () -> ()
+
+func @vector_print_scalar_ui40(%arg0: ui40) {
+  vector.print %arg0 : ui40
+  return
+}
+// CHECK-LABEL: llvm.func @vector_print_scalar_ui40(
+// CHECK-SAME: %[[A:.*]]: !llvm.i40)
+//       CHECK: %[[S:.*]] = llvm.zext %[[A]] : !llvm.i40 to !llvm.i64
+//       CHECK: llvm.call @printU64(%[[S]]) : (!llvm.i64) -> ()
+//       CHECK: llvm.call @print_newline() : () -> ()
+
 func @vector_print_scalar_i64(%arg0: i64) {
   vector.print %arg0 : i64
   return
@@ -457,6 +527,15 @@ func @vector_print_scalar_i64(%arg0: i64) {
 // CHECK-LABEL: llvm.func @vector_print_scalar_i64(
 // CHECK-SAME: %[[A:.*]]: !llvm.i64)
 //       CHECK:    llvm.call @print_i64(%[[A]]) : (!llvm.i64) -> ()
+//       CHECK:    llvm.call @print_newline() : () -> ()
+
+func @vector_print_scalar_ui64(%arg0: ui64) {
+  vector.print %arg0 : ui64
+  return
+}
+// CHECK-LABEL: llvm.func @vector_print_scalar_ui64(
+// CHECK-SAME: %[[A:.*]]: !llvm.i64)
+//       CHECK:    llvm.call @printU64(%[[A]]) : (!llvm.i64) -> ()
 //       CHECK:    llvm.call @print_newline() : () -> ()
 
 func @vector_print_scalar_f32(%arg0: f32) {
@@ -678,6 +757,17 @@ func @vector_fma(%a: vector<8xf32>, %b: vector<2x4xf32>) -> (vector<8xf32>, vect
   return %0, %1: vector<8xf32>, vector<2x4xf32>
 }
 
+func @reduce_f16(%arg0: vector<16xf16>) -> f16 {
+  %0 = vector.reduction "add", %arg0 : vector<16xf16> into f16
+  return %0 : f16
+}
+// CHECK-LABEL: llvm.func @reduce_f16(
+// CHECK-SAME: %[[A:.*]]: !llvm.vec<16 x half>)
+//      CHECK: %[[C:.*]] = llvm.mlir.constant(0.000000e+00 : f16) : !llvm.half
+//      CHECK: %[[V:.*]] = "llvm.intr.experimental.vector.reduce.v2.fadd"(%[[C]], %[[A]])
+// CHECK-SAME: {reassoc = false} : (!llvm.half, !llvm.vec<16 x half>) -> !llvm.half
+//      CHECK: llvm.return %[[V]] : !llvm.half
+
 func @reduce_f32(%arg0: vector<16xf32>) -> f32 {
   %0 = vector.reduction "add", %arg0 : vector<16xf32> into f32
   return %0 : f32
@@ -699,6 +789,15 @@ func @reduce_f64(%arg0: vector<16xf64>) -> f64 {
 //      CHECK: %[[V:.*]] = "llvm.intr.experimental.vector.reduce.v2.fadd"(%[[C]], %[[A]])
 // CHECK-SAME: {reassoc = false} : (!llvm.double, !llvm.vec<16 x double>) -> !llvm.double
 //      CHECK: llvm.return %[[V]] : !llvm.double
+
+func @reduce_i8(%arg0: vector<16xi8>) -> i8 {
+  %0 = vector.reduction "add", %arg0 : vector<16xi8> into i8
+  return %0 : i8
+}
+// CHECK-LABEL: llvm.func @reduce_i8(
+// CHECK-SAME: %[[A:.*]]: !llvm.vec<16 x i8>)
+//      CHECK: %[[V:.*]] = "llvm.intr.experimental.vector.reduce.add"(%[[A]])
+//      CHECK: llvm.return %[[V]] : !llvm.i8
 
 func @reduce_i32(%arg0: vector<16xi32>) -> i32 {
   %0 = vector.reduction "add", %arg0 : vector<16xi32> into i32

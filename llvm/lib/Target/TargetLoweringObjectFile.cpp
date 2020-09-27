@@ -162,6 +162,8 @@ void TargetLoweringObjectFile::emitCGProfile(MCStreamer &Streamer,
       return nullptr;
     auto *V = cast<ValueAsMetadata>(MDO);
     const Function *F = cast<Function>(V->getValue());
+    if (F->hasDLLImportStorageClass())
+      return nullptr;
     return TM->getSymbol(F);
   };
 

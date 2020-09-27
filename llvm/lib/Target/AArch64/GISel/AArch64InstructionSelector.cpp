@@ -18,6 +18,7 @@
 #include "AArch64Subtarget.h"
 #include "AArch64TargetMachine.h"
 #include "MCTargetDesc/AArch64AddressingModes.h"
+#include "MCTargetDesc/AArch64MCTargetDesc.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/CodeGen/GlobalISel/InstructionSelector.h"
 #include "llvm/CodeGen/GlobalISel/InstructionSelectorImpl.h"
@@ -108,7 +109,7 @@ private:
   bool selectCompareBranch(MachineInstr &I, MachineFunction &MF,
                            MachineRegisterInfo &MRI) const;
 
-  bool selectVectorASHR(MachineInstr &I, MachineRegisterInfo &MRI) const;
+  bool selectVectorAshrLshr(MachineInstr &I, MachineRegisterInfo &MRI) const;
   bool selectVectorSHL(MachineInstr &I, MachineRegisterInfo &MRI) const;
 
   // Helper to generate an equivalent of scalar_to_vector into a new register,
@@ -1495,6 +1496,10 @@ bool AArch64InstructionSelector::selectVectorSHL(
     Opc = ImmVal ? AArch64::SHLv2i32_shift : AArch64::USHLv2i32;
   } else if (Ty == LLT::vector(4, 16)) {
     Opc = ImmVal ? AArch64::SHLv4i16_shift : AArch64::USHLv4i16;
+  } else if (Ty == LLT::vector(8, 16)) {
+    Opc = ImmVal ? AArch64::SHLv8i16_shift : AArch64::USHLv8i16;
+  } else if (Ty == LLT::vector(16, 8)) {
+    Opc = ImmVal ? AArch64::SHLv16i8_shift : AArch64::USHLv16i8;
   } else {
     LLVM_DEBUG(dbgs() << "Unhandled G_SHL type");
     return false;
@@ -1511,9 +1516,10 @@ bool AArch64InstructionSelector::selectVectorSHL(
   return true;
 }
 
-bool AArch64InstructionSelector::selectVectorASHR(
+bool AArch64InstructionSelector::selectVectorAshrLshr(
     MachineInstr &I, MachineRegisterInfo &MRI) const {
-  assert(I.getOpcode() == TargetOpcode::G_ASHR);
+  assert(I.getOpcode() == TargetOpcode::G_ASHR ||
+         I.getOpcode() == TargetOpcode::G_LSHR);
   Register DstReg = I.getOperand(0).getReg();
   const LLT Ty = MRI.getType(DstReg);
   Register Src1Reg = I.getOperand(1).getReg();
@@ -1522,25 +1528,37 @@ bool AArch64InstructionSelector::selectVectorASHR(
   if (!Ty.isVector())
     return false;
 
+  bool IsASHR = I.getOpcode() == TargetOpcode::G_ASHR;
+
+  // We expect the immediate case to be lowered in the PostLegalCombiner to
+  // AArch64ISD::VASHR or AArch64ISD::VLSHR equivalents.
+
   // There is not a shift right register instruction, but the shift left
   // register instruction takes a signed value, where negative numbers specify a
   // right shift.
 
   unsigned Opc = 0;
   unsigned NegOpc = 0;
-  const TargetRegisterClass *RC = nullptr;
+  const TargetRegisterClass *RC =
+      getRegClassForTypeOnBank(Ty, RBI.getRegBank(AArch64::FPRRegBankID), RBI);
   if (Ty == LLT::vector(2, 64)) {
-    Opc = AArch64::SSHLv2i64;
+    Opc = IsASHR ? AArch64::SSHLv2i64 : AArch64::USHLv2i64;
     NegOpc = AArch64::NEGv2i64;
-    RC = &AArch64::FPR128RegClass;
   } else if (Ty == LLT::vector(4, 32)) {
-    Opc = AArch64::SSHLv4i32;
+    Opc = IsASHR ? AArch64::SSHLv4i32 : AArch64::USHLv4i32;
     NegOpc = AArch64::NEGv4i32;
-    RC = &AArch64::FPR128RegClass;
   } else if (Ty == LLT::vector(2, 32)) {
-    Opc = AArch64::SSHLv2i32;
+    Opc = IsASHR ? AArch64::SSHLv2i32 : AArch64::USHLv2i32;
     NegOpc = AArch64::NEGv2i32;
-    RC = &AArch64::FPR64RegClass;
+  } else if (Ty == LLT::vector(4, 16)) {
+    Opc = IsASHR ? AArch64::SSHLv4i16 : AArch64::USHLv4i16;
+    NegOpc = AArch64::NEGv4i16;
+  } else if (Ty == LLT::vector(8, 16)) {
+    Opc = IsASHR ? AArch64::SSHLv8i16 : AArch64::USHLv8i16;
+    NegOpc = AArch64::NEGv8i16;
+  } else if (Ty == LLT::vector(16, 8)) {
+    Opc = IsASHR ? AArch64::SSHLv16i8 : AArch64::USHLv16i8;
+    NegOpc = AArch64::NEGv8i16;
   } else {
     LLVM_DEBUG(dbgs() << "Unhandled G_ASHR type");
     return false;
@@ -2452,22 +2470,21 @@ bool AArch64InstructionSelector::select(MachineInstr &I) {
     // operands to use appropriate classes.
     return constrainSelectedInstRegOperands(I, TII, TRI, RBI);
   }
-  case TargetOpcode::G_FADD:
-  case TargetOpcode::G_FSUB:
-  case TargetOpcode::G_FMUL:
-  case TargetOpcode::G_FDIV:
-
+  case TargetOpcode::G_LSHR:
   case TargetOpcode::G_ASHR:
     if (MRI.getType(I.getOperand(0).getReg()).isVector())
-      return selectVectorASHR(I, MRI);
+      return selectVectorAshrLshr(I, MRI);
     LLVM_FALLTHROUGH;
   case TargetOpcode::G_SHL:
     if (Opcode == TargetOpcode::G_SHL &&
         MRI.getType(I.getOperand(0).getReg()).isVector())
       return selectVectorSHL(I, MRI);
     LLVM_FALLTHROUGH;
-  case TargetOpcode::G_OR:
-  case TargetOpcode::G_LSHR: {
+  case TargetOpcode::G_FADD:
+  case TargetOpcode::G_FSUB:
+  case TargetOpcode::G_FMUL:
+  case TargetOpcode::G_FDIV:
+  case TargetOpcode::G_OR: {
     // Reject the various things we don't support yet.
     if (unsupportedBinOp(I, RBI, MRI, TRI))
       return false;
@@ -2960,6 +2977,24 @@ bool AArch64InstructionSelector::select(MachineInstr &I) {
       I.eraseFromParent();
       return constrainSelectedInstRegOperands(*MovMI, TII, TRI, RBI);
     }
+  }
+  case AArch64::G_DUP: {
+    // When the scalar of G_DUP is an s8/s16 gpr, they can't be selected by
+    // imported patterns. Do it manually here. Avoiding generating s16 gpr is
+    // difficult because at RBS we may end up pessimizing the fpr case if we
+    // decided to add an anyextend to fix this. Manual selection is the most
+    // robust solution for now.
+    Register SrcReg = I.getOperand(1).getReg();
+    if (RBI.getRegBank(SrcReg, MRI, TRI)->getID() != AArch64::GPRRegBankID)
+      return false; // We expect the fpr regbank case to be imported.
+    LLT SrcTy = MRI.getType(SrcReg);
+    if (SrcTy.getSizeInBits() == 16)
+      I.setDesc(TII.get(AArch64::DUPv8i16gpr));
+    else if (SrcTy.getSizeInBits() == 8)
+      I.setDesc(TII.get(AArch64::DUPv16i8gpr));
+    else
+      return false;
+    return constrainSelectedInstRegOperands(I, TII, TRI, RBI);
   }
   case TargetOpcode::G_INTRINSIC_TRUNC:
     return selectIntrinsicTrunc(I, MRI);
@@ -3771,7 +3806,10 @@ static std::pair<unsigned, unsigned>
 getInsertVecEltOpInfo(const RegisterBank &RB, unsigned EltSize) {
   unsigned Opc, SubregIdx;
   if (RB.getID() == AArch64::GPRRegBankID) {
-    if (EltSize == 32) {
+    if (EltSize == 16) {
+      Opc = AArch64::INSvi16gpr;
+      SubregIdx = AArch64::ssub;
+    } else if (EltSize == 32) {
       Opc = AArch64::INSvi32gpr;
       SubregIdx = AArch64::ssub;
     } else if (EltSize == 64) {
@@ -4871,21 +4909,22 @@ bool AArch64InstructionSelector::selectIntrinsic(MachineInstr &I,
     RBI.constrainGenericRegister(DstReg, AArch64::GPR64RegClass, MRI);
 
     if (Depth == 0 && IntrinID == Intrinsic::returnaddress) {
-      if (MFReturnAddr) {
-        MIRBuilder.buildCopy({DstReg}, MFReturnAddr);
-        I.eraseFromParent();
-        return true;
+      if (!MFReturnAddr) {
+        // Insert the copy from LR/X30 into the entry block, before it can be
+        // clobbered by anything.
+        MFI.setReturnAddressIsTaken(true);
+        MFReturnAddr = getFunctionLiveInPhysReg(MF, TII, AArch64::LR,
+                                                AArch64::GPR64RegClass);
       }
 
-      MFI.setReturnAddressIsTaken(true);
+      if (STI.hasV8_3aOps()) {
+        MIRBuilder.buildInstr(AArch64::XPACI, {DstReg}, {MFReturnAddr});
+      } else {
+        MIRBuilder.buildCopy({Register(AArch64::LR)}, {MFReturnAddr});
+        MIRBuilder.buildInstr(AArch64::XPACLRI);
+        MIRBuilder.buildCopy({DstReg}, {Register(AArch64::LR)});
+      }
 
-      // Insert the copy from LR/X30 into the entry block, before it can be
-      // clobbered by anything.
-      Register LiveInLR = getFunctionLiveInPhysReg(MF, TII, AArch64::LR,
-                                                   AArch64::GPR64spRegClass);
-      MIRBuilder.buildCopy(DstReg, LiveInLR);
-
-      MFReturnAddr = LiveInLR;
       I.eraseFromParent();
       return true;
     }
@@ -4905,7 +4944,16 @@ bool AArch64InstructionSelector::selectIntrinsic(MachineInstr &I,
       MIRBuilder.buildCopy({DstReg}, {FrameAddr});
     else {
       MFI.setReturnAddressIsTaken(true);
-      MIRBuilder.buildInstr(AArch64::LDRXui, {DstReg}, {FrameAddr}).addImm(1);
+
+      if (STI.hasV8_3aOps()) {
+        Register TmpReg = MRI.createVirtualRegister(&AArch64::GPR64RegClass);
+        MIRBuilder.buildInstr(AArch64::LDRXui, {TmpReg}, {FrameAddr}).addImm(1);
+        MIRBuilder.buildInstr(AArch64::XPACI, {DstReg}, {TmpReg});
+      } else {
+        MIRBuilder.buildInstr(AArch64::LDRXui, {Register(AArch64::LR)}, {FrameAddr}).addImm(1);
+        MIRBuilder.buildInstr(AArch64::XPACLRI);
+        MIRBuilder.buildCopy({DstReg}, {Register(AArch64::LR)});
+      }
     }
 
     I.eraseFromParent();

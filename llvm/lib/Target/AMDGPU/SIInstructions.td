@@ -2047,6 +2047,16 @@ def : GCNPat <
 >;
 
 def : GCNPat <
+  (v2i16 (build_vector (i16 SReg_32:$src1), (i16 0))),
+  (S_AND_B32 (S_MOV_B32 (i32 0xffff)), SReg_32:$src1)
+>;
+
+def : GCNPat <
+  (v2f16 (build_vector (f16 SReg_32:$src1), (f16 FP_ZERO))),
+  (S_AND_B32 (S_MOV_B32 (i32 0xffff)), SReg_32:$src1)
+>;
+
+def : GCNPat <
   (v2i16 (build_vector (i16 SReg_32:$src0), (i16 undef))),
   (COPY_TO_REGCLASS SReg_32:$src0, SReg_32)
 >;
@@ -2476,4 +2486,12 @@ def G_AMDGPU_INTRIN_IMAGE_STORE : AMDGPUGenericInstruction {
   let InOperandList = (ins unknown:$intrin, variable_ops);
   let hasSideEffects = 0;
   let mayStore = 1;
+}
+
+def G_AMDGPU_INTRIN_BVH_INTERSECT_RAY : AMDGPUGenericInstruction {
+  let OutOperandList = (outs type0:$dst);
+  let InOperandList = (ins unknown:$intrin, variable_ops);
+  let hasSideEffects = 0;
+  let mayLoad = 1;
+  let mayStore = 0;
 }

@@ -2800,7 +2800,7 @@ static void emitGlobalConstantImpl(const DataLayout &DL, const Constant *CV,
   if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
     const uint64_t StoreSize = DL.getTypeStoreSize(CV->getType());
 
-    if (StoreSize < 8) {
+    if (StoreSize <= 8) {
       if (AP.isVerbose())
         AP.OutStreamer->GetCommentOS() << format("0x%" PRIx64 "\n",
                                                  CI->getZExtValue());
@@ -3022,7 +3022,7 @@ static void emitBasicBlockLoopComments(const MachineBasicBlock &MBB,
   OS.indent(Loop->getLoopDepth()*2-2);
 
   OS << "This ";
-  if (Loop->empty())
+  if (Loop->isInnermost())
     OS << "Inner ";
   OS << "Loop Header: Depth=" + Twine(Loop->getLoopDepth()) << '\n';
 
@@ -3253,14 +3253,10 @@ void AsmPrinter::emitXRayTable() {
   MCSection *InstMap = nullptr;
   MCSection *FnSledIndex = nullptr;
   const Triple &TT = TM.getTargetTriple();
-  // Use PC-relative addresses on all targets except MIPS (MIPS64 cannot use
-  // PC-relative addresses because R_MIPS_PC64 does not exist).
-  bool PCRel = !TT.isMIPS();
+  // Use PC-relative addresses on all targets.
   if (TT.isOSBinFormatELF()) {
     auto LinkedToSym = cast<MCSymbolELF>(CurrentFnSym);
     auto Flags = ELF::SHF_ALLOC | ELF::SHF_LINK_ORDER;
-    if (!PCRel)
-      Flags |= ELF::SHF_WRITE;
     StringRef GroupName;
     if (F.hasComdat()) {
       Flags |= ELF::SHF_GROUP;
@@ -3294,25 +3290,20 @@ void AsmPrinter::emitXRayTable() {
   OutStreamer->SwitchSection(InstMap);
   OutStreamer->emitLabel(SledsStart);
   for (const auto &Sled : Sleds) {
-    if (PCRel) {
-      MCSymbol *Dot = Ctx.createTempSymbol();
-      OutStreamer->emitLabel(Dot);
-      OutStreamer->emitValueImpl(
-          MCBinaryExpr::createSub(MCSymbolRefExpr::create(Sled.Sled, Ctx),
-                                  MCSymbolRefExpr::create(Dot, Ctx), Ctx),
-          WordSizeBytes);
-      OutStreamer->emitValueImpl(
-          MCBinaryExpr::createSub(
-              MCSymbolRefExpr::create(CurrentFnBegin, Ctx),
-              MCBinaryExpr::createAdd(
-                  MCSymbolRefExpr::create(Dot, Ctx),
-                  MCConstantExpr::create(WordSizeBytes, Ctx), Ctx),
-              Ctx),
-          WordSizeBytes);
-    } else {
-      OutStreamer->emitSymbolValue(Sled.Sled, WordSizeBytes);
-      OutStreamer->emitSymbolValue(CurrentFnSym, WordSizeBytes);
-    }
+    MCSymbol *Dot = Ctx.createTempSymbol();
+    OutStreamer->emitLabel(Dot);
+    OutStreamer->emitValueImpl(
+        MCBinaryExpr::createSub(MCSymbolRefExpr::create(Sled.Sled, Ctx),
+                                MCSymbolRefExpr::create(Dot, Ctx), Ctx),
+        WordSizeBytes);
+    OutStreamer->emitValueImpl(
+        MCBinaryExpr::createSub(
+            MCSymbolRefExpr::create(CurrentFnBegin, Ctx),
+            MCBinaryExpr::createAdd(MCSymbolRefExpr::create(Dot, Ctx),
+                                    MCConstantExpr::create(WordSizeBytes, Ctx),
+                                    Ctx),
+            Ctx),
+        WordSizeBytes);
     Sled.emit(WordSizeBytes, OutStreamer.get());
   }
   MCSymbol *SledsEnd = OutContext.createTempSymbol("xray_sleds_end", true);
